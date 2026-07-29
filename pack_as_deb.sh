@@ -14,12 +14,16 @@ mkdir -p "$TMP_ROOT/data/app"
 
 cp -r ${SCRIPT_DIR}/DEBIAN ${TMP_ROOT}/
 cp -r ${SCRIPT_DIR}/app/face-det ${TMP_APP}/
+cp -r ${SCRIPT_DIR}/app/face-mask ${TMP_APP}/
 cp -r ${SCRIPT_DIR}/app/fall-det ${TMP_APP}/
 cp -r ${SCRIPT_DIR}/app/hand-det ${TMP_APP}/
 cp -r ${SCRIPT_DIR}/app/hand-keypoint ${TMP_APP}/
 cp -r ${SCRIPT_DIR}/app/hand-keypoint-cls ${TMP_APP}/
+cp -r ${SCRIPT_DIR}/app/licence_detect ${TMP_APP}/
 cp -r ${SCRIPT_DIR}/app/person-det ${TMP_APP}/
 cp -r ${SCRIPT_DIR}/app/person-keypoint ${TMP_APP}/
+cp -r ${SCRIPT_DIR}/app/smoke-detect ${TMP_APP}/
+cp -r ${SCRIPT_DIR}/app/traffic-detect ${TMP_APP}/
 cp -r ${SCRIPT_DIR}/app/yolo11-cls ${TMP_APP}/
 cp -r ${SCRIPT_DIR}/app/yolo11-det ${TMP_APP}/
 # cp -r ${SCRIPT_DIR}/app/ocr ${TMP_APP}/
