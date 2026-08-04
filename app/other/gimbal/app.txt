@@ -1,0 +1,6 @@
+#APP信息配置文件/APP Config information
+
+name_cn="二维舵机云台" #中文名称
+name_en="gimbal" #English Name
+version="1.0.0" #版本号
+index= #排列顺序

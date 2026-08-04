@@ -1,0 +1,6 @@
+#APP信息配置文件/APP Config information
+
+name_cn="云台色块追踪" #中文名称
+name_en="gimbal-color" #English Name
+version="1.0.0" #版本号
+index= #排列顺序

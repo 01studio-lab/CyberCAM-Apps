@@ -1,0 +1,1 @@
+python -u main.py >> ./debug.txt 2>&1
