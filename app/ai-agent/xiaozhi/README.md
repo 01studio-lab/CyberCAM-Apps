@@ -66,7 +66,7 @@
 }
 ```
 
-`locale` 控制界面和 MCP 工具描述，支持 `auto`、`zh-CN`、`en-US`。`auto` 会读取 `LC_ALL`、`LC_MESSAGES` 或 `LANG`，无法识别时回退到中文。
+`locale` 控制界面和 MCP 工具描述，支持 `auto`、`zh-CN`、`en-US`。`auto` 会读取 `LC_ALL`、`LC_MESSAGES` 或 `LANG`；CyberCAM 系统用 `C.UTF-8` 表示英文、用 `zh_CN.UTF-8` 表示中文，无法识别时回退到中文。
 
 `wake_word_locale` 控制离线唤醒语言；`auto` 表示跟随界面语言。为兼容旧配置，如果 `wake_word` 已明确写成“你好小智”或 “Hello Xiaozhi”，`auto` 会选择与该词匹配的模型语言。`wake_word` 留空时自动显示对应语言的默认词。它只覆盖界面和协议中的唤醒词文字，真正参与识别的 token 位于对应语言的关键词文件中。
 

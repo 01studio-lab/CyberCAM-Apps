@@ -38,7 +38,7 @@ Create `/data/app/xiaozhi/config.json` only when you need to override defaults:
 }
 ```
 
-- `locale`: `auto`, `zh-CN`, or `en-US`. Auto reads `LC_ALL`, `LC_MESSAGES`, then `LANG`; unsupported values fall back to Chinese.
+- `locale`: `auto`, `zh-CN`, or `en-US`. Auto reads `LC_ALL`, `LC_MESSAGES`, then `LANG`. CyberCAM uses `C.UTF-8` for English and `zh_CN.UTF-8` for Chinese; unsupported values fall back to Chinese.
 - `wake_word_locale`: `auto`, `zh-CN`, or `en-US`. Auto follows the UI locale; a legacy explicit “你好小智” or “Hello Xiaozhi” value keeps its matching wake language.
 - `wake_word`: optional display/protocol override. Leave it empty to use “你好小智” or “Hello Xiaozhi” automatically.
 

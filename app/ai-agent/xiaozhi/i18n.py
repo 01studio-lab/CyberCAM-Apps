@@ -230,8 +230,11 @@ def normalize_locale(value, fallback=DEFAULT_LOCALE):
     if not candidate or candidate.lower() in ("auto", "system"):
         return fallback
     candidate = candidate.split(".", 1)[0].split("@", 1)[0].replace("_", "-").lower()
+    # CyberCAM's system ``set-language en`` command intentionally stores
+    # English as C.UTF-8.  Treating the POSIX locale as unknown would make an
+    # explicitly selected English desktop fall back to Chinese.
     if candidate == "c" or candidate == "posix":
-        return fallback
+        return "en-US"
     if candidate.startswith("zh"):
         return "zh-CN"
     if candidate.startswith("en"):
