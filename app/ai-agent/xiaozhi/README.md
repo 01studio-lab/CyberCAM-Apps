@@ -2,6 +2,8 @@
 
 在核桃派 CyberCAM 上运行的小智语音助手。应用使用官方小智 WebSocket 协议，麦克风音频以 16 kHz 单声道、60 ms Opus 帧上传，服务端语音回复实时解码到板载扬声器。
 
+[English](./README_EN.md)
+
 ## 效果
 
 ![小智语音助手演示](./assets/demo.gif)
@@ -16,11 +18,12 @@
 - 半双工按键对话，避免扬声器回声进入麦克风
 - 实时 Opus 编解码，不生成临时录音文件
 - STT 文本、回复字幕、情绪和连接状态显示
+- 中文和英文界面，可自动读取系统语言或通过配置固定语言
 - 底部大按钮触摸操作、按压反馈与实体键操作
 - 麦克风 DC 偏置滤波，改善板载模拟麦克风的底噪
 - 录音超时自动提交，断线后一次点击即可恢复并重新聆听
 - 无语音 6 秒自动取消，识别或播放连续 15 秒无进展自动回到待机
-- 离线语音唤醒：待机时说“你好小智”，音频只在设备本地进行关键词识别；兼容“小智小智”
+- 中英双语离线语音唤醒：中文“你好小智”（兼容“小智小智”），英文“Hello Xiaozhi”
 - 对话结束后保留有效 WebSocket 会话，下一次唤醒无需重复 TLS 和 hello 握手
 - 断线时取消旧 MCP/相机任务，下一连接使用独立设备控制会话
 - MCP 设备控制：状态、音量、亮度、相机视觉、状态灯和系统信息
@@ -43,6 +46,7 @@
 
 ```json
 {
+  "locale": "auto",
   "websocket_url": "wss://your-server.example/xiaozhi/v1/",
   "access_token": "your-token",
   "verify_tls": true,
@@ -53,7 +57,8 @@
   "speech_level_threshold": 0.08,
   "response_timeout_seconds": 15,
   "wake_word_enabled": true,
-  "wake_word": "你好小智",
+  "wake_word_locale": "auto",
+  "wake_word": "",
   "wake_word_device": "plughw:0,0",
   "wake_word_score": 3.5,
   "wake_word_threshold": 0.1,
@@ -61,11 +66,15 @@
 }
 ```
 
+`locale` 控制界面和 MCP 工具描述，支持 `auto`、`zh-CN`、`en-US`。`auto` 会读取 `LC_ALL`、`LC_MESSAGES` 或 `LANG`，无法识别时回退到中文。
+
+`wake_word_locale` 控制离线唤醒语言；`auto` 表示跟随界面语言。为兼容旧配置，如果 `wake_word` 已明确写成“你好小智”或 “Hello Xiaozhi”，`auto` 会选择与该词匹配的模型语言。`wake_word` 留空时自动显示对应语言的默认词。它只覆盖界面和协议中的唤醒词文字，真正参与识别的 token 位于对应语言的关键词文件中。
+
 `websocket_url` 留空时通过官方 OTA 接口获取地址与短期令牌。`device.json` 在首次启动时生成，保存稳定的 Device-Id 和 Client-Id；部署更新时不要覆盖它。K230 没有官方预置的硬件激活密钥，因此默认使用激活协议 v1。只有设备已经安全预置了服务端认可的 `serial_number` 和 `hmac_key` 时，才应在 `device.json` 中显式设置 `"activation_version": 2`。
 
 只有使用明确受信任的内网自签名服务时才应将 `verify_tls` 设为 `false`。
 
-需要更换“你好小智”、增加多个唤醒词或调整灵敏度时，请参阅[修改离线唤醒词](./WAKE_WORD.md)。修改中文唤醒词不需要重新训练模型或编译设备程序。
+需要更换唤醒词、增加多个唤醒词或调整灵敏度时，请参阅[修改离线唤醒词](./WAKE_WORD.md)。中英文唤醒词都不需要重新训练模型或编译设备程序。
 
 ## 运行环境
 
@@ -77,12 +86,12 @@
 
 真机目录：`/data/app/xiaozhi`
 
-离线唤醒所需的 K230 `riscv64` 常驻服务、sherpa-onnx v1.13.2 SpaceMi 运行库和中文 INT8 KWS 模型均已随 App 内置。将整个 `app/xiaozhi` 目录复制到设备即可运行，不需要在设备上下载资源、安装依赖或现场编译。模型只在 App 启动时预热一次。
+离线唤醒所需的 K230 `riscv64` 常驻服务、sherpa-onnx v1.13.2 SpaceMi 运行库和中英双语 KWS 模型均已随 App 内置。将整个 `app/ai-agent/xiaozhi` 目录复制到设备即可运行，不需要在设备上下载资源、安装依赖或现场编译。模型只在 App 启动时预热一次。
 
 在仓库根目录可通过一条命令自动部署；脚本会压缩传输、在设备端校验全部内置资源，并保留已有的 `device.json` 和 `config.json`：
 
 ```sh
-./app/xiaozhi/deploy.sh 10.10.11.213
+./app/ai-agent/xiaozhi/deploy.sh 10.10.11.213
 ```
 
 如果设备地址改变，将参数替换为新的 IP。部署前需要先退出正在运行的小智。`run.sh` 启动时还会检查内置资源并自动修复可执行权限。

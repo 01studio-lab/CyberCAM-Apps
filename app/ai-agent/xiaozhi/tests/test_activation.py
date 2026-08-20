@@ -48,6 +48,11 @@ class ActivationTests(unittest.TestCase):
         self.assertNotIn("access_token", json.dumps(payload))
         self.assertNotIn("secret", json.dumps(payload))
 
+    def test_ota_request_uses_selected_language(self):
+        identity = {"device_id": "dev", "client_id": "client"}
+        headers, _ = activation.build_ota_request(identity, locale="en-US")
+        self.assertEqual(headers["Accept-Language"], "en-US")
+
     def test_v1_activation_uses_empty_payload(self):
         identity = {
             "device_id": "dev",

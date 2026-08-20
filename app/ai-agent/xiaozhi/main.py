@@ -23,8 +23,9 @@ except Exception as exc:
     hardware_board = DigitalInOut = Direction = Pull = None
     GPIO_IMPORT_ERROR = exc
 
-from assistant import AssistantRuntime
-from activation import ensure_identity
+from assistant import DEFAULT_CONFIG, AssistantRuntime
+from activation import ensure_identity, load_json
+from i18n import Localizer, resolve_locale
 from protocol import (
     button_label,
     map_touch_coordinates,
@@ -294,15 +295,15 @@ PHASE_COLORS = {
 }
 
 STATUS_LABELS = {
-    "starting": "启动中",
-    "arming": "准备唤醒",
-    "connecting": "连接中",
-    "activating": "待绑定",
-    "idle": "已就绪",
-    "listening": "聆听中",
-    "thinking": "思考中",
-    "speaking": "回答中",
-    "error": "需重试",
+    "starting": "status_starting",
+    "arming": "status_arming",
+    "connecting": "status_connecting",
+    "activating": "status_activating",
+    "idle": "status_idle",
+    "listening": "status_listening",
+    "thinking": "status_thinking",
+    "speaking": "status_speaking",
+    "error": "status_error",
 }
 
 
@@ -351,17 +352,21 @@ def _draw_microphone(screen, center, color):
     cv2.line(screen, (x - 7, y + 19), (x + 7, y + 19), color, 2, cv2.LINE_AA)
 
 
-def compose(state, now, pressed=False):
+def compose(state, now, pressed=False, localizer=None):
+    localizer = localizer or Localizer()
+    tr = localizer.text
     screen = np.zeros((SCREEN_H, SCREEN_W, 3), np.uint8)
     screen[:] = COLORS["bg"]
     cv2.rectangle(screen, (0, 0), (639, 68), COLORS["header"], -1)
     rounded_rect(screen, (12, 12), (56, 56), 12, COLORS["surface_high"])
     draw_text(screen, "×", (25, 13), COLORS["text"], 28)
-    draw_text(screen, "小智", (74, 13), COLORS["text"], 27)
-    draw_text(screen, "K230 智能语音助手", (136, 22), COLORS["faint"], 15)
+    app_name = tr("app_name")
+    draw_text(screen, app_name, (74, 13), COLORS["text"], 27)
+    subtitle_x = 74 + _text_width(app_name, 27) + 18
+    draw_text(screen, tr("app_subtitle"), (subtitle_x, 22), COLORS["faint"], 15)
 
     status_color = PHASE_COLORS.get(state.phase, COLORS["blue"])
-    status_text = STATUS_LABELS.get(state.phase, "运行中")
+    status_text = tr(STATUS_LABELS.get(state.phase, "status_running"))
     badge_width = _text_width(status_text, 14) + 38
     badge_left = 622 - badge_width
     rounded_rect(screen, (badge_left, 18), (622, 50), 16, COLORS["surface"])
@@ -388,7 +393,7 @@ def compose(state, now, pressed=False):
     if pressed and not disabled:
         button_color = mix_color(button_color, COLORS["text"], 0.18)
     rounded_rect(screen, (132, 389), (508, 449), 18, button_color)
-    label = button_label(state.phase)
+    label = button_label(state.phase, localizer)
     label_color = COLORS["muted"] if disabled else COLORS["bg"]
     group_width = _text_width(label, 21) + (42 if not disabled else 0)
     label_left = (SCREEN_W - group_width) // 2
@@ -396,7 +401,7 @@ def compose(state, now, pressed=False):
         _draw_microphone(screen, (label_left + 14, 414), label_color)
         label_left += 42
     draw_text(screen, label, (label_left, 405), label_color, 21)
-    draw_centered(screen, "短按实体键操作 · 长按 2 秒退出", 458, COLORS["faint"], 12)
+    draw_centered(screen, tr("hardware_hint"), 458, COLORS["faint"], 12)
     return screen
 
 
@@ -415,7 +420,9 @@ def main():
     # Prime identity/file codecs before initializing the vendor display module.
     # Its native extension is unstable when Python performs certain first-time
     # imports after Display.init() in a detached launcher process.
-    ensure_identity(os.path.join(app_dir, "device.json"))
+    startup_config = load_json(os.path.join(app_dir, "config.json"), DEFAULT_CONFIG)
+    startup_localizer = Localizer(resolve_locale(startup_config.get("locale")))
+    ensure_identity(os.path.join(app_dir, "device.json"), startup_localizer)
     Display.init()
     flipped = direction.get_lcd() == 2
     if flipped:
@@ -476,7 +483,7 @@ def main():
                 "starting", "arming", "connecting", "listening", "thinking", "speaking"
             )
             if state != last_state or pressed != last_pressed or (animated and now >= next_animation):
-                Display.show(compose(state, now, pressed))
+                Display.show(compose(state, now, pressed, runtime.localizer))
                 last_state = state
                 last_pressed = pressed
                 next_animation = now + 0.08

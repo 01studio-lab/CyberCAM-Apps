@@ -1,6 +1,8 @@
 import json
 import unittest
 
+from i18n import Localizer
+
 from protocol import (
     ViewState,
     authorization_value,
@@ -117,6 +119,16 @@ class ProtocolTests(unittest.TestCase):
         self.assertIsNone(touch_action(700, 200))
         self.assertEqual(button_label("listening"), "说完了")
         self.assertEqual(button_label("error"), "重试")
+
+    def test_state_and_controls_can_be_rendered_in_english(self):
+        english = Localizer("en-US")
+        state = reduce_server_message(
+            ViewState(phase="listening"),
+            {"type": "stt", "text": "What time is it?"},
+            english,
+        )
+        self.assertEqual(state.title, "Thinking")
+        self.assertEqual(button_label("listening", english), "I'm done")
 
     def test_primary_action_is_disabled_while_starting_or_connecting(self):
         for phase in ("starting", "connecting", "activating"):

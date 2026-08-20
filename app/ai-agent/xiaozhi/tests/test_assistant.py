@@ -4,11 +4,14 @@ import unittest
 from unittest import mock
 
 from assistant import DEFAULT_CONFIG, AssistantRuntime, SpeechActivityGate, TTSStopGate
+from i18n import default_wake_word, normalize_locale
 
 
 class DefaultConfigTests(unittest.TestCase):
     def test_default_wake_word_matches_idle_prompt(self):
-        self.assertEqual(DEFAULT_CONFIG["wake_word"], "你好小智")
+        locale = normalize_locale(DEFAULT_CONFIG["wake_word_locale"])
+        self.assertEqual(DEFAULT_CONFIG["wake_word"], "")
+        self.assertEqual(default_wake_word(locale), "你好小智")
 
 
 class SpeechActivityGateTests(unittest.TestCase):

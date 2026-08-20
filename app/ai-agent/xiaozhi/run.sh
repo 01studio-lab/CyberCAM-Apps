@@ -12,16 +12,17 @@ wake/runtime-spacemit/lib/libonnxruntime.so.1
 wake/runtime-spacemit/lib/libonnxruntime_providers_shared.so
 wake/runtime-spacemit/lib/libspacemit_ep.so.2
 wake/model/tokens.txt
-wake/model/encoder-epoch-12-avg-2-chunk-16-left-64.int8.onnx
-wake/model/decoder-epoch-12-avg-2-chunk-16-left-64.int8.onnx
-wake/model/joiner-epoch-12-avg-2-chunk-16-left-64.int8.onnx
-wake/keywords.txt
+wake/model/encoder-epoch-13-avg-2-chunk-16-left-64.int8.onnx
+wake/model/decoder-epoch-13-avg-2-chunk-16-left-64.onnx
+wake/model/joiner-epoch-13-avg-2-chunk-16-left-64.int8.onnx
+wake/keywords.zh-CN.txt
+wake/keywords.en-US.txt
 "
 
 for asset in $required_assets; do
     if [ ! -s "$asset" ]; then
         echo "错误：小智内置唤醒资源缺失：$asset" >&2
-        echo "请重新复制完整的 app/xiaozhi 目录" >&2
+        echo "请重新复制完整的 app/ai-agent/xiaozhi 目录" >&2
         exit 1
     fi
 done
