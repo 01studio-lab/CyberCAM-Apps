@@ -8,6 +8,8 @@ import subprocess
 import sys
 import threading
 
+from i18n import Localizer, default_wake_word, normalize_locale
+
 
 READY_MARKER = "Recording started!"
 IGNORED_AFTER_READY = ("Use recording device:", "Current sample rate:")
@@ -45,9 +47,21 @@ def detected_keyword(line):
 
 
 class WakeWordEngine:
-    def __init__(self, app_dir, config, on_ready, on_detect, on_error):
+    def __init__(
+        self,
+        app_dir,
+        config,
+        on_ready,
+        on_detect,
+        on_error,
+        locale="zh-CN",
+        wake_word=None,
+    ):
         self.app_dir = os.path.abspath(app_dir)
         self.config = config
+        self.locale = normalize_locale(locale)
+        self.localizer = Localizer(self.locale)
+        self.wake_word = str(wake_word or default_wake_word(self.locale)).strip()
         self.on_ready = on_ready
         self.on_detect = on_detect
         self.on_error = on_error
@@ -90,12 +104,13 @@ class WakeWordEngine:
         wake_dir = os.path.join(self.app_dir, "wake")
         runtime = os.path.join(wake_dir, "runtime-spacemit", "lib")
         model = os.path.join(wake_dir, "model")
+        keywords = "keywords.en-US.txt" if self.locale == "en-US" else "keywords.zh-CN.txt"
         return (
             os.path.join(model, "tokens.txt"),
-            os.path.join(model, "encoder-epoch-12-avg-2-chunk-16-left-64.int8.onnx"),
-            os.path.join(model, "decoder-epoch-12-avg-2-chunk-16-left-64.int8.onnx"),
-            os.path.join(model, "joiner-epoch-12-avg-2-chunk-16-left-64.int8.onnx"),
-            os.path.join(wake_dir, "keywords.txt"),
+            os.path.join(model, "encoder-epoch-13-avg-2-chunk-16-left-64.int8.onnx"),
+            os.path.join(model, "decoder-epoch-13-avg-2-chunk-16-left-64.onnx"),
+            os.path.join(model, "joiner-epoch-13-avg-2-chunk-16-left-64.int8.onnx"),
+            os.path.join(wake_dir, keywords),
             os.path.join(runtime, "libsherpa-onnx-c-api.so"),
             os.path.join(runtime, "libonnxruntime.so.1"),
             os.path.join(runtime, "libonnxruntime_providers_shared.so"),
@@ -123,6 +138,7 @@ class WakeWordEngine:
             "--decoder=" + decoder,
             "--joiner=" + joiner,
             "--model-type=zipformer2",
+            "--modeling-unit=cjkchar",
             "--provider=cpu",
             "--num-threads=1",
             "--keywords-score=" + str(score),
@@ -266,7 +282,7 @@ class WakeWordEngine:
                         self._listening = False
                     self._paused.set()
                     if wanted:
-                        self.on_detect(keyword)
+                        self.on_detect(self._localized_keyword(keyword))
                 elif line.startswith("ERROR\t"):
                     message = line.split("\t", 1)[1].strip()
                     with self._lock:
@@ -275,11 +291,11 @@ class WakeWordEngine:
                         self._listening = False
                     self._paused.set()
                     if wanted:
-                        self.on_error(message)
+                        self.on_error(self._localized_error(message))
                 if self._stop.is_set():
                     break
             if not self._stop.is_set():
-                self.on_error("唤醒服务意外退出")
+                self.on_error(self.localizer.text("wake_service_stopped"))
         except Exception as exc:
             if not self._stop.is_set():
                 self.on_error(str(exc) or type(exc).__name__)
@@ -325,13 +341,17 @@ class WakeWordEngine:
                     detected = True
                     keyword = detected_keyword(line)
                     print("[wake] detected:", keyword)
-                    self.on_detect(keyword)
+                    self.on_detect(self._localized_keyword(keyword))
                     break
                 if self._stop.is_set():
                     break
             if not self._stop.is_set() and not detected:
                 status = process.poll()
-                message = "唤醒引擎已停止" if status in (0, None) else "唤醒引擎退出: %s" % status
+                message = (
+                    self.localizer.text("wake_engine_stopped")
+                    if status in (0, None)
+                    else self.localizer.text("wake_engine_exit", status=status)
+                )
                 self.on_error(message)
         except Exception as exc:
             if not self._stop.is_set():
@@ -340,6 +360,21 @@ class WakeWordEngine:
             self._terminate_process()
             with self._lock:
                 self._process = None
+
+    def _localized_keyword(self, keyword):
+        keyword = str(keyword or "").strip()
+        if self.locale == "en-US" and keyword.upper() == "HELLO_XIAOZHI":
+            return self.wake_word
+        return keyword
+
+    def _localized_error(self, message):
+        translations = {
+            "无法加载唤醒模型": "wake_model_load_failed",
+            "麦克风暂时不可用": "wake_microphone_unavailable",
+            "麦克风读取失败": "wake_microphone_read_failed",
+        }
+        key = translations.get(str(message or "").strip())
+        return self.localizer.text(key) if key else message
 
     def _terminate_process(self):
         with self._lock:

@@ -11,6 +11,7 @@ from dataclasses import replace
 from activation import APP_VERSION, DEFAULT_OTA_URL, OTAClient, ensure_identity, load_json
 from audio import AudioIO, OpusCodec, PCMPreprocessor, pcm_level
 from devices import CyberCAMDevices
+from i18n import Localizer, default_wake_word, resolve_locale, resolve_wake_locale
 from mcp import MCPServer
 from protocol import (
     FRAME_DURATION_MS,
@@ -31,6 +32,7 @@ from wakeword import WakeWordEngine
 
 
 DEFAULT_CONFIG = {
+    "locale": "auto",
     "ota_url": DEFAULT_OTA_URL,
     "websocket_url": "",
     "access_token": "",
@@ -42,7 +44,8 @@ DEFAULT_CONFIG = {
     "speech_level_threshold": 0.08,
     "response_timeout_seconds": 15,
     "wake_word_enabled": True,
-    "wake_word": "你好小智",
+    "wake_word_locale": "auto",
+    "wake_word": "",
     "wake_word_device": "plughw:0,0",
     "wake_word_score": 3.5,
     "wake_word_threshold": 0.1,
@@ -136,8 +139,22 @@ class AssistantRuntime:
         self.config = load_json(os.path.join(app_dir, "config.json"), DEFAULT_CONFIG)
         for key, value in DEFAULT_CONFIG.items():
             self.config.setdefault(key, value)
-        self.identity = ensure_identity(os.path.join(app_dir, "device.json"))
-        self._state = ViewState()
+        self.localizer = Localizer(resolve_locale(self.config.get("locale")))
+        configured_wake_word = str(self.config.get("wake_word") or "").strip()
+        self.wake_locale = resolve_wake_locale(
+            self.config.get("wake_word_locale"),
+            self.localizer.locale,
+            configured_wake_word,
+        )
+        self.wake_word = configured_wake_word
+        if not self.wake_word:
+            self.wake_word = default_wake_word(self.wake_locale)
+        self.identity = ensure_identity(
+            os.path.join(app_dir, "device.json"), self.localizer
+        )
+        self._state = ViewState(
+            title=self._tr("starting_title"), detail=self._tr("starting_detail")
+        )
         self._state_lock = threading.Lock()
         self._disconnect_lock = threading.Lock()
         self._response_lock = threading.Lock()
@@ -168,6 +185,8 @@ class AssistantRuntime:
             on_ready=lambda: self.action("wake_ready"),
             on_detect=lambda text: self.action("wake:" + text),
             on_error=lambda message: self.action("wake_error:" + message),
+            locale=self.wake_locale,
+            wake_word=self.wake_word,
         )
         self._thread.start()
 
@@ -175,13 +194,17 @@ class AssistantRuntime:
         with self._state_lock:
             return self._state
 
+    def _tr(self, key, **values):
+        localizer = getattr(self, "localizer", None) or Localizer()
+        return localizer.text(key, **values)
+
     def _set_state(self, **changes):
         with self._state_lock:
             self._state = replace(self._state, **changes)
 
     def _apply_server(self, message):
         with self._state_lock:
-            self._state = reduce_server_message(self._state, message)
+            self._state = reduce_server_message(self._state, message, self.localizer)
 
     def action(self, name="toggle"):
         try:
@@ -197,8 +220,8 @@ class AssistantRuntime:
                 if not self._stop.is_set():
                     self._set_state(
                         phase="idle",
-                        title="你好，我是小智",
-                        detail="按一下开始说话",
+                        title=self._tr("idle_title"),
+                        detail=self._tr("tap_to_talk"),
                         error="",
                     )
                     self._arm_wakeword()
@@ -260,11 +283,10 @@ class AssistantRuntime:
             return False
         if command == "wake_ready":
             if self.snapshot().phase == "arming":
-                phrase = str(self.config.get("wake_word") or "你好小智")
                 self._set_state(
                     phase="idle",
-                    title="叫我“%s”" % phrase,
-                    detail="唤醒后直接说出问题 · 也可以点击按钮",
+                    title=self._tr("wake_prompt", phrase=self.wake_word),
+                    detail=self._tr("wake_prompt_detail"),
                     error="",
                 )
             return False
@@ -272,7 +294,7 @@ class AssistantRuntime:
             if self.snapshot().phase == "arming":
                 self._set_state(
                     phase="idle",
-                    title="按钮对话仍可使用",
+                    title=self._tr("wake_button_fallback"),
                     detail=command.split(":", 1)[1][:72],
                 )
             return False
@@ -283,8 +305,8 @@ class AssistantRuntime:
             self._stop_wakeword()
             self._set_state(
                 phase="connecting",
-                title="唤醒成功",
-                detail="请直接说出你的问题",
+                title=self._tr("wake_success"),
+                detail=self._tr("say_question"),
                 error="",
             )
             self._start_listening(mode="auto", wake_text=wake_text)
@@ -302,10 +324,16 @@ class AssistantRuntime:
             self._endpoint_refresh_required = False
             return
 
-        self._set_state(phase="connecting", title="正在连接小智", detail="正在获取设备配置", error="")
+        self._set_state(
+            phase="connecting",
+            title=self._tr("connecting_xiaozhi"),
+            detail=self._tr("fetching_device_config"),
+            error="",
+        )
         ota = OTAClient(
             self.config.get("ota_url") or DEFAULT_OTA_URL,
             bool(self.config.get("verify_tls", True)),
+            self.localizer.locale,
         )
         response = ota.fetch(self.identity)
         activation = response.get("activation")
@@ -313,8 +341,8 @@ class AssistantRuntime:
             code = str(activation.get("code") or "")
             self._set_state(
                 phase="activating",
-                title="需要绑定设备",
-                detail="登录 xiaozhi.me 添加设备",
+                title=self._tr("activation_required"),
+                detail=self._tr("activation_detail"),
                 activation_code=code,
                 error="",
             )
@@ -325,12 +353,12 @@ class AssistantRuntime:
             if not ota.activate(self.identity, activation, self._stop, on_wait):
                 if self._stop.is_set():
                     return
-                raise RuntimeError("等待激活超时，请重新进入 App")
+                raise RuntimeError(self._tr("activation_timeout"))
             response = ota.fetch(self.identity)
         url = str(response.get("websocket_url") or "").strip()
         token = str(response.get("access_token") or "").strip()
         if not url:
-            raise RuntimeError("OTA 未返回 WebSocket 地址")
+            raise RuntimeError(self._tr("ota_missing_websocket"))
         self._endpoint = (url, token)
         self._endpoint_source = "ota"
         self._endpoint_refresh_required = False
@@ -340,8 +368,11 @@ class AssistantRuntime:
             self.identity,
             state_provider=self.snapshot,
             verify_tls=bool(self.config.get("verify_tls", True)),
+            locale=self.localizer.locale,
         )
-        return devices, MCPServer(devices, version=APP_VERSION)
+        return devices, MCPServer(
+            devices, version=APP_VERSION, locale=self.localizer.locale
+        )
 
     def _reset_mcp_session(self):
         previous = self._mcp
@@ -391,12 +422,16 @@ class AssistantRuntime:
         warmed_up = self._wakeword.warmed_up
         self._set_state(
             phase="arming",
-            title="正在恢复语音唤醒" if warmed_up else "正在准备语音唤醒",
-            detail="正在打开麦克风" if warmed_up else "首次加载大约需要 5 秒",
+            title=self._tr("wake_resuming") if warmed_up else self._tr("wake_preparing"),
+            detail=self._tr("opening_microphone") if warmed_up else self._tr("wake_first_load"),
             error="",
         )
         if not self._wakeword.start():
-            self._set_state(phase="idle", title="你好，我是小智", detail="按一下开始说话")
+            self._set_state(
+                phase="idle",
+                title=self._tr("idle_title"),
+                detail=self._tr("tap_to_talk"),
+            )
             return False
         return True
 
@@ -416,8 +451,8 @@ class AssistantRuntime:
                 self._audio.close_output()
         self._set_state(
             phase="idle",
-            title="你好，我是小智",
-            detail="按一下开始说话",
+            title=self._tr("idle_title"),
+            detail=self._tr("tap_to_talk"),
             error="",
             level=0.0,
         )
@@ -443,7 +478,12 @@ class AssistantRuntime:
         if self._ws is not None:
             self._disconnect()
         url, token = self._endpoint_for_connection()
-        self._set_state(phase="connecting", title="正在连接", detail="正在建立安全语音通道", error="")
+        self._set_state(
+            phase="connecting",
+            title=self._tr("connecting"),
+            detail=self._tr("secure_channel"),
+            error="",
+        )
         headers = {
             "Protocol-Version": "1",
             "Device-Id": self.identity["device_id"],
@@ -470,7 +510,7 @@ class AssistantRuntime:
                         self._session_id = data.get("session_id")
                         break
             else:
-                raise TimeoutError("等待服务端 hello 超时")
+                raise TimeoutError(self._tr("server_hello_timeout"))
         except Exception:
             ws.close()
             raise
@@ -490,7 +530,7 @@ class AssistantRuntime:
 
     def _send_json(self, message):
         if self._ws is None:
-            raise RuntimeError("语音通道未连接")
+            raise RuntimeError(self._tr("voice_channel_not_connected"))
         self._ws.send_text(encode_json(message))
 
     def _send_mcp_response(self, ws, payload):
@@ -553,7 +593,7 @@ class AssistantRuntime:
         self._connect()
         self._stop_listening(send_stop=False)
         if self._audio is None:
-            raise RuntimeError("音频设备未初始化")
+            raise RuntimeError(self._tr("audio_not_initialized"))
         frame_size = INPUT_SAMPLE_RATE * FRAME_DURATION_MS // 1000
         self._audio.close_output()
         self._audio.open_input(INPUT_SAMPLE_RATE, frame_size)
@@ -567,8 +607,12 @@ class AssistantRuntime:
         self._send_json(listen_message("start", self._session_id, mode=mode))
         self._set_state(
             phase="listening",
-            title="我在听",
-            detail="说完后再按一下" if mode == "manual" else "请直接说出你的问题",
+            title=self._tr("listening_title"),
+            detail=(
+                self._tr("manual_listening_detail")
+                if mode == "manual"
+                else self._tr("say_question")
+            ),
             transcript="",
             answer="",
             error="",
@@ -614,7 +658,7 @@ class AssistantRuntime:
             if not self._record_stop.is_set() and not self._stop.is_set():
                 print("[xiaozhi] 发送语音时连接已结束")
                 if not self._queue_connection_reset():
-                    self._show_error(RuntimeError("语音连接已断开，请重试"))
+                    self._show_error(RuntimeError(self._tr("voice_channel_disconnected")))
         except Exception as exc:
             if not self._record_stop.is_set() and not self._stop.is_set():
                 print("[xiaozhi] 录音线程异常，正在重置:", exc)
@@ -637,7 +681,12 @@ class AssistantRuntime:
         if send_stop and was_listening and self._ws is not None:
             self._send_json(listen_message("stop", self._session_id))
             self._set_response_deadline()
-            self._set_state(phase="thinking", title="正在识别", detail="请稍候", level=0.0)
+            self._set_state(
+                phase="thinking",
+                title=self._tr("recognizing_title"),
+                detail=self._tr("please_wait"),
+                level=0.0,
+            )
 
     def _receive_loop(self):
         # Keep this receiver tied to the socket that created it. Normal idle
@@ -696,7 +745,7 @@ class AssistantRuntime:
             if not self._stop.is_set() and self._ws is ws:
                 print("[xiaozhi] 语音连接已结束，恢复待机唤醒")
                 if not self._queue_connection_reset():
-                    self._show_error(RuntimeError("语音连接已断开，请重试"))
+                    self._show_error(RuntimeError(self._tr("voice_channel_disconnected")))
         except Exception as exc:
             if not self._stop.is_set() and self._ws is ws:
                 print("[xiaozhi] 接收线程异常，正在重置:", exc)
@@ -708,7 +757,7 @@ class AssistantRuntime:
         print("[xiaozhi]", type(error).__name__, message)
         self._set_state(
             phase="error",
-            title="暂时无法使用",
+            title=self._tr("unavailable_title"),
             detail=message[:72],
             error=message,
             level=0.0,

@@ -13,6 +13,8 @@ import urllib.parse
 import uuid
 from dataclasses import asdict, is_dataclass
 
+from i18n import Localizer
+
 
 BACKLIGHT_PATH = "/sys/class/backlight/backlight"
 STATUS_LED_PATH = "/sys/class/leds/green:status"
@@ -35,10 +37,10 @@ def _percent_to_raw(percent, maximum):
     return max(0, min(maximum, round(percent * maximum / 100.0)))
 
 
-def _parse_mixer_percent(output):
+def _parse_mixer_percent(output, localizer=None):
     matches = re.findall(r"\[(\d+)%\]", output or "")
     if not matches:
-        raise RuntimeError("无法读取扬声器音量")
+        raise RuntimeError((localizer or Localizer()).text("speaker_volume_read_failed"))
     return int(matches[-1])
 
 
@@ -97,10 +99,11 @@ def _multipart_body(question, jpeg, boundary):
 
 
 class CyberCAMDevices:
-    def __init__(self, identity, state_provider=None, verify_tls=True):
+    def __init__(self, identity, state_provider=None, verify_tls=True, locale="zh-CN"):
         self.identity = identity
         self.state_provider = state_provider
         self.verify_tls = verify_tls
+        self.localizer = Localizer(locale)
         self._camera_lock = threading.Lock()
         self._cancel_operations = threading.Event()
         self._response_lock = threading.Lock()
@@ -132,7 +135,7 @@ class CyberCAMDevices:
 
     def _check_cancelled(self):
         if self._cancel_operations.is_set():
-            raise RuntimeError("设备操作已取消")
+            raise RuntimeError(self.localizer.text("device_operation_cancelled"))
 
     def camera_available(self):
         return any(os.path.exists("/dev/video%d" % index) for index in range(5))
@@ -145,12 +148,12 @@ class CyberCAMDevices:
             text=True,
             timeout=3,
         )
-        return _parse_mixer_percent(result.stdout)
+        return _parse_mixer_percent(result.stdout, self.localizer)
 
     def set_volume(self, volume):
         volume = int(volume)
         if not 0 <= volume <= 100:
-            raise ValueError("volume 必须在 0 到 100 之间")
+            raise ValueError(self.localizer.text("volume_range"))
         subprocess.run(
             ["amixer", "sset", "PCM", "%d%%" % volume],
             check=True,
@@ -168,10 +171,10 @@ class CyberCAMDevices:
     def set_brightness(self, brightness):
         brightness = int(brightness)
         if not 0 <= brightness <= 100:
-            raise ValueError("brightness 必须在 0 到 100 之间")
+            raise ValueError(self.localizer.text("brightness_range"))
         maximum = int(_read_text(os.path.join(BACKLIGHT_PATH, "max_brightness"), "0"))
         if maximum <= 0:
-            raise RuntimeError("设备不支持屏幕亮度控制")
+            raise RuntimeError(self.localizer.text("brightness_unsupported"))
         _write_text(
             os.path.join(BACKLIGHT_PATH, "brightness"),
             _percent_to_raw(brightness, maximum),
@@ -183,7 +186,7 @@ class CyberCAMDevices:
 
     def set_status_led(self, enabled):
         if not os.path.exists(os.path.join(STATUS_LED_PATH, "brightness")):
-            raise RuntimeError("设备不支持状态灯控制")
+            raise RuntimeError(self.localizer.text("status_led_unsupported"))
         _write_text(os.path.join(STATUS_LED_PATH, "brightness"), 1 if enabled else 0)
         return {"enabled": self.get_status_led()}
 
@@ -259,7 +262,7 @@ class CyberCAMDevices:
         camera = Sensor.Sensor(640, 480)
         try:
             if not camera.isOpened():
-                raise RuntimeError("无法打开摄像头")
+                raise RuntimeError(self.localizer.text("camera_open_failed"))
             if direction.get_lcd() == 2:
                 camera.set_hmirror(1)
             frame = None
@@ -269,22 +272,22 @@ class CyberCAMDevices:
                 if ok:
                     frame = candidate
             if frame is None:
-                raise RuntimeError("摄像头未返回画面")
+                raise RuntimeError(self.localizer.text("camera_no_frame"))
             encoded, buffer = cv2.imencode(
                 ".jpg", frame, [int(cv2.IMWRITE_JPEG_QUALITY), 85]
             )
             if not encoded:
-                raise RuntimeError("摄像头画面编码失败")
+                raise RuntimeError(self.localizer.text("camera_encode_failed"))
             return buffer.tobytes()
         finally:
             camera.release()
 
     def take_photo(self, question):
         self._check_cancelled()
-        question = str(question or "请描述这张照片").strip()
+        question = str(question or self.localizer.text("photo_default_question")).strip()
         parsed = urllib.parse.urlparse(self._vision_url)
         if parsed.scheme not in ("http", "https") or not parsed.hostname:
-            raise RuntimeError("服务端未下发有效的视觉分析地址")
+            raise RuntimeError(self.localizer.text("vision_endpoint_missing"))
         with self._camera_lock:
             jpeg = self._capture_jpeg()
         self._check_cancelled()
@@ -326,7 +329,9 @@ class CyberCAMDevices:
             if not 200 <= response.status < 300:
                 detail = response.read(200).decode("utf-8", "replace")
                 raise RuntimeError(
-                    "视觉服务返回 HTTP %d: %s" % (response.status, detail)
+                    self.localizer.text(
+                        "vision_http_error", status=response.status, detail=detail
+                    )
                 )
             chunks = []
             size = 0
@@ -338,11 +343,11 @@ class CyberCAMDevices:
                 chunks.append(chunk)
                 size += len(chunk)
                 if size > 1024 * 1024:
-                    raise RuntimeError("视觉服务响应过大")
+                    raise RuntimeError(self.localizer.text("vision_response_too_large"))
             return b"".join(chunks).decode("utf-8", "replace")
         except (OSError, http.client.HTTPException) as exc:
             if self._cancel_operations.is_set():
-                raise RuntimeError("设备操作已取消") from exc
+                raise RuntimeError(self.localizer.text("device_operation_cancelled")) from exc
             raise
         finally:
             with self._response_lock:

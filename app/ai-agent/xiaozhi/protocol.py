@@ -7,6 +7,8 @@ state machine can be covered by ordinary unit tests on a development machine.
 import json
 from dataclasses import dataclass, replace
 
+from i18n import Localizer
+
 
 PROTOCOL_VERSION = 1
 INPUT_SAMPLE_RATE = 16000
@@ -104,16 +106,17 @@ class ViewState:
     level: float = 0.0
 
 
-def reduce_server_message(state, message):
+def reduce_server_message(state, message, localizer=None):
     """Apply a server JSON message to the immutable UI state."""
+    tr = (localizer or Localizer()).text
     kind = message.get("type")
     if kind == "stt":
         user_text = str(message.get("text") or "").strip()
         return replace(
             state,
             phase="thinking",
-            title="正在思考",
-            detail="小智正在组织回答",
+            title=tr("thinking_title"),
+            detail=tr("thinking_detail"),
             transcript=user_text,
             error="",
         )
@@ -125,37 +128,49 @@ def reduce_server_message(state, message):
     if kind == "tts":
         tts_state = message.get("state")
         if tts_state == "start":
-            return replace(state, phase="speaking", title="小智正在说", detail="轻触可打断")
+            return replace(
+                state,
+                phase="speaking",
+                title=tr("speaking_title"),
+                detail=tr("tap_to_interrupt"),
+            )
         if tts_state == "sentence_start":
             answer = str(message.get("text") or "").strip()
             return replace(
                 state,
                 phase="speaking",
-                title="小智正在说",
-                detail="轻触可打断",
+                title=tr("speaking_title"),
+                detail=tr("tap_to_interrupt"),
                 answer=answer or state.answer,
             )
         if tts_state == "stop":
-            return replace(state, phase="idle", title="可以继续问我", detail="按一下开始说话", level=0.0)
+            return replace(
+                state,
+                phase="idle",
+                title=tr("continue_title"),
+                detail=tr("tap_to_talk"),
+                level=0.0,
+            )
     if kind == "alert":
-        title = str(message.get("status") or "提示")
-        detail = str(message.get("message") or "收到服务端提示")
+        title = str(message.get("status") or tr("alert_title"))
+        detail = str(message.get("message") or tr("alert_detail"))
         return replace(state, phase="error", title=title, detail=detail, error=detail)
     return state
 
 
-def button_label(phase):
+def button_label(phase, localizer=None):
+    tr = (localizer or Localizer()).text
     if phase == "listening":
-        return "说完了"
+        return tr("button_done")
     if phase in ("thinking", "speaking"):
-        return "打断并提问"
+        return tr("button_interrupt")
     if phase == "activating":
-        return "等待激活"
+        return tr("button_activation")
     if phase == "connecting":
-        return "正在连接"
+        return tr("button_connecting")
     if phase == "error":
-        return "重试"
-    return "开始说话"
+        return tr("button_retry")
+    return tr("button_talk")
 
 
 def primary_action_enabled(phase):

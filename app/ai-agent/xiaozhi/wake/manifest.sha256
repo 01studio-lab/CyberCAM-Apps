@@ -4,8 +4,9 @@
 e4abc60c53b1bcf0e3cde31b284d67c242ba3db8a2dbac3b10f0d817828fc289  wake/runtime-spacemit/lib/libonnxruntime.so.1
 62a3d2d9916c20bbe08358e5797c3e8c7ff11c6235728ac396d1d1f315d598de  wake/runtime-spacemit/lib/libonnxruntime_providers_shared.so
 c7bab0898d458151ffd255f69c0df6029ff17d569133a4106239159d9e077d67  wake/runtime-spacemit/lib/libspacemit_ep.so.2
-72316508d9119696145abc6f1f8cdc46287535c34e5ce7e595f845cb1499cf2e  wake/model/tokens.txt
-dd784973fc9d2fabb3b800d6dcd20fc3b0ca84f8e2415afe54b032878e447f4d  wake/model/encoder-epoch-12-avg-2-chunk-16-left-64.int8.onnx
-ed83454004d5bd16d831eaf00adcd181ed7734886aab6ef440f3ffa5aa3cfe3b  wake/model/decoder-epoch-12-avg-2-chunk-16-left-64.int8.onnx
-f79760052b87239e325f0567c752ad3130b30d92effb847d4307743c20c59a24  wake/model/joiner-epoch-12-avg-2-chunk-16-left-64.int8.onnx
-44d9e911e122c23f493715782d3c60b46ae6143e851d1805d36c0c87197959d2  wake/keywords.txt
+2d3f32311f9b692b964da3c90e830258d3e78e013cb0c992dbfb15cd5a1a71b0  wake/model/tokens.txt
+408bbd740838c42d5bf6d1c5b80b3c88b616c7860b92d980328b5b068c76ae48  wake/model/encoder-epoch-13-avg-2-chunk-16-left-64.int8.onnx
+63a22dd60f40fff082ac3e09afa507f6787da36df76ded2fbe145fa233e22c21  wake/model/decoder-epoch-13-avg-2-chunk-16-left-64.onnx
+190d4067b4cc20b72a42a1916e69d92052000fb7051a427ebb1bc72a69207dc1  wake/model/joiner-epoch-13-avg-2-chunk-16-left-64.int8.onnx
+44d9e911e122c23f493715782d3c60b46ae6143e851d1805d36c0c87197959d2  wake/keywords.zh-CN.txt
+cd367af3ef68cf87925ad902ef67c4db469c39eb2b0bf620aced4a2c13c4e865  wake/keywords.en-US.txt

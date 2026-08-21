@@ -4,6 +4,8 @@ import json
 import queue
 import threading
 
+from i18n import Localizer
+
 
 MCP_PROTOCOL_VERSION = "2024-11-05"
 MAX_LIST_PAYLOAD = 8000
@@ -17,8 +19,16 @@ def _schema(properties=None, required=None):
 
 
 class MCPServer:
-    def __init__(self, devices, server_name="cybercam-xiaozhi", version="2.1.0"):
+    def __init__(
+        self,
+        devices,
+        server_name="cybercam-xiaozhi",
+        version="2.1.0",
+        locale="zh-CN",
+    ):
         self.devices = devices
+        self.localizer = Localizer(locale)
+        tr = self.localizer.text
         self.server_name = server_name
         self.version = version
         self._jobs = queue.Queue(maxsize=16)
@@ -30,33 +40,33 @@ class MCPServer:
         )
         self._worker.start()
         self._tools = [
-            self._tool("self.get_device_status", "获取设备当前状态", _schema(), lambda _: devices.get_device_status()),
+            self._tool("self.get_device_status", tr("mcp_device_status"), _schema(), lambda _: devices.get_device_status()),
             self._tool(
                 "self.audio_speaker.set_volume",
-                "设置扬声器音量，范围 0 到 100",
+                tr("mcp_set_volume"),
                 _schema({"volume": {"type": "integer", "minimum": 0, "maximum": 100}}, ["volume"]),
                 lambda args: devices.set_volume(args["volume"]),
             ),
             self._tool(
                 "self.screen.set_brightness",
-                "设置屏幕亮度，范围 0 到 100",
+                tr("mcp_set_brightness"),
                 _schema({"brightness": {"type": "integer", "minimum": 0, "maximum": 100}}, ["brightness"]),
                 lambda args: devices.set_brightness(args["brightness"]),
             ),
             self._tool(
                 "self.camera.take_photo",
-                "拍摄当前画面并回答关于画面的问题",
-                _schema({"question": {"type": "string", "description": "需要根据照片回答的问题"}}, ["question"]),
+                tr("mcp_take_photo"),
+                _schema({"question": {"type": "string", "description": tr("mcp_photo_question")}}, ["question"]),
                 lambda args: devices.take_photo(args["question"]),
             ),
             self._tool(
                 "self.status_led.set_enabled",
-                "打开或关闭设备绿色状态灯",
+                tr("mcp_set_led"),
                 _schema({"enabled": {"type": "boolean"}}, ["enabled"]),
                 lambda args: devices.set_status_led(args["enabled"]),
             ),
-            self._tool("self.get_system_info", "获取设备系统与硬件信息", _schema(), lambda _: devices.get_system_info(), True),
-            self._tool("self.screen.get_info", "获取屏幕尺寸和背光信息", _schema(), lambda _: devices.get_screen_info(), True),
+            self._tool("self.get_system_info", tr("mcp_system_info"), _schema(), lambda _: devices.get_system_info(), True),
+            self._tool("self.screen.get_info", tr("mcp_screen_info"), _schema(), lambda _: devices.get_screen_info(), True),
         ]
 
     @staticmethod
@@ -86,15 +96,16 @@ class MCPServer:
         return {key: tool[key] for key in ("name", "description", "inputSchema")}
 
     def _list_tools(self, params):
+        tr = self.localizer.text
         if not isinstance(params, dict):
-            raise ValueError("params 必须是对象")
+            raise ValueError(tr("params_object"))
         include_user = params.get("withUserTools", False)
         if not isinstance(include_user, bool):
-            raise ValueError("withUserTools 必须是布尔值")
+            raise ValueError(tr("user_tools_boolean"))
         available = [tool for tool in self._tools if include_user or not tool["user_only"]]
         cursor = params.get("cursor") or ""
         if not isinstance(cursor, str):
-            raise ValueError("cursor 必须是字符串")
+            raise ValueError(tr("cursor_string"))
         start = 0
         if cursor:
             start = next(
@@ -102,7 +113,7 @@ class MCPServer:
                 -1,
             )
             if start < 0:
-                raise ValueError("未知 cursor: %s" % cursor)
+                raise ValueError(tr("unknown_cursor", cursor=cursor))
         selected = []
         index = start
         while index < len(available):
@@ -112,7 +123,7 @@ class MCPServer:
                 probe["nextCursor"] = available[index + 1]["name"]
             if len(json.dumps(probe, ensure_ascii=False).encode("utf-8")) > MAX_LIST_PAYLOAD:
                 if not selected:
-                    raise ValueError("工具描述超过 MCP 列表大小限制: %s" % available[index]["name"])
+                    raise ValueError(tr("tool_too_large", name=available[index]["name"]))
                 break
             selected = candidate
             index += 1
@@ -121,29 +132,29 @@ class MCPServer:
             result["nextCursor"] = available[index]["name"]
         return result
 
-    @staticmethod
-    def _validate_arguments(tool, arguments):
+    def _validate_arguments(self, tool, arguments):
+        tr = self.localizer.text
         if not isinstance(arguments, dict):
-            raise ValueError("arguments 必须是对象")
+            raise ValueError(tr("arguments_object"))
         schema = tool["inputSchema"]
         for name in schema.get("required", []):
             if name not in arguments:
-                raise ValueError("缺少参数: %s" % name)
+                raise ValueError(tr("missing_argument", name=name))
         for name, value in arguments.items():
             rule = schema.get("properties", {}).get(name)
             if rule is None:
                 continue
             expected = rule.get("type")
             if expected == "integer" and (not isinstance(value, int) or isinstance(value, bool)):
-                raise ValueError("%s 必须是整数" % name)
+                raise ValueError(tr("argument_integer", name=name))
             if expected == "boolean" and not isinstance(value, bool):
-                raise ValueError("%s 必须是布尔值" % name)
+                raise ValueError(tr("argument_boolean", name=name))
             if expected == "string" and not isinstance(value, str):
-                raise ValueError("%s 必须是字符串" % name)
+                raise ValueError(tr("argument_string", name=name))
             if "minimum" in rule and value < rule["minimum"]:
-                raise ValueError("%s 小于允许的最小值" % name)
+                raise ValueError(tr("argument_below_min", name=name))
             if "maximum" in rule and value > rule["maximum"]:
-                raise ValueError("%s 超出允许的最大值" % name)
+                raise ValueError(tr("argument_above_max", name=name))
 
     def handle(self, payload):
         if not isinstance(payload, dict):
@@ -160,7 +171,7 @@ class MCPServer:
         if params is None:
             params = {}
         if not isinstance(params, dict):
-            return self._error(request_id, -32602, "params 必须是对象")
+            return self._error(request_id, -32602, self.localizer.text("params_object"))
         try:
             if method == "initialize":
                 capabilities = params.get("capabilities") if isinstance(params, dict) else {}
@@ -183,7 +194,7 @@ class MCPServer:
                 return self._response(request_id, result)
             if method == "tools/call":
                 if not isinstance(params, dict):
-                    raise ValueError("params 必须是对象")
+                    raise ValueError(self.localizer.text("params_object"))
                 name = params.get("name")
                 tool = next((item for item in self._tools if item["name"] == name), None)
                 if tool is None:
