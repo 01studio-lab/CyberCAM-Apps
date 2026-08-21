@@ -6,11 +6,21 @@
 
 ## 效果
 
+### 中文界面
+
 ![小智语音助手演示](./assets/demo.gif)
 
 | 待机唤醒 | 正在聆听 | 语音回答 |
 | --- | --- | --- |
 | ![待机唤醒](./assets/screen-idle.png) | ![正在聆听](./assets/screen-listening.png) | ![语音回答](./assets/screen-speaking.png) |
+
+### 英文界面
+
+![Xiaozhi voice assistant demo](./assets/demo-en.gif)
+
+| Waiting for wake word | Listening | Speaking |
+| --- | --- | --- |
+| ![Waiting for wake word](./assets/screen-idle-en.png) | ![Listening](./assets/screen-listening-en.png) | ![Speaking](./assets/screen-speaking-en.png) |
 
 ## 功能
 

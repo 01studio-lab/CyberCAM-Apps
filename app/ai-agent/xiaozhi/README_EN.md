@@ -4,6 +4,24 @@
 
 Xiaozhi is a voice assistant for the WalnutPi CyberCAM. It implements the official Xiaozhi WebSocket protocol and streams 16 kHz mono audio in 60 ms Opus frames.
 
+## Screenshots
+
+### English UI
+
+![Xiaozhi voice assistant demo](./assets/demo-en.gif)
+
+| Waiting for wake word | Listening | Speaking |
+| --- | --- | --- |
+| ![Waiting for wake word](./assets/screen-idle-en.png) | ![Listening](./assets/screen-listening-en.png) | ![Speaking](./assets/screen-speaking-en.png) |
+
+### Chinese UI
+
+![小智语音助手演示](./assets/demo.gif)
+
+| Waiting for wake word | Listening | Speaking |
+| --- | --- | --- |
+| ![待机唤醒](./assets/screen-idle.png) | ![正在聆听](./assets/screen-listening.png) | ![语音回答](./assets/screen-speaking.png) |
+
 ## Features
 
 - Chinese and English UI, status text, controls, and MCP tool descriptions

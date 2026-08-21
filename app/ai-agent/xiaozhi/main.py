@@ -72,8 +72,21 @@ def _text_width(value, height):
         return len(str(value)) * height
 
 
+def fitted_text_height(value, preferred, max_width, minimum):
+    """Return the largest readable font size that fits the available width."""
+    for height in range(preferred, minimum - 1, -1):
+        if _text_width(value, height) <= max_width:
+            return height
+    return minimum
+
+
 def draw_centered(image, value, y, color, height):
     draw_text(image, value, ((SCREEN_W - _text_width(value, height)) // 2, y), color, height)
+
+
+def draw_centered_fitted(image, value, y, color, preferred, max_width, minimum):
+    height = fitted_text_height(value, preferred, max_width, minimum)
+    draw_centered(image, value, y, color, height)
 
 
 def rounded_rect(image, top_left, bottom_right, radius, color):
@@ -96,11 +109,42 @@ def mix_color(first, second, amount):
     return tuple(int(a * (1.0 - amount) + b * amount) for a, b in zip(first, second))
 
 
-def wrap_text(value, width=25, lines=2):
+def _fitting_prefix_length(value, max_width, height):
+    low, high = 1, len(value)
+    best = 1
+    while low <= high:
+        middle = (low + high) // 2
+        if _text_width(value[:middle], height) <= max_width:
+            best = middle
+            low = middle + 1
+        else:
+            high = middle - 1
+    return best
+
+
+def _ellipsize(value, max_width, height):
+    suffix = "…"
+    if _text_width(value, height) <= max_width:
+        return value
+    while value and _text_width(value + suffix, height) > max_width:
+        value = value[:-1]
+    return value.rstrip() + suffix
+
+
+def wrap_text(value, max_width=500, height=20, lines=2):
+    """Wrap mixed CJK/Latin text by rendered width rather than character count."""
     compact = " ".join(str(value or "").split())
     result = []
     while compact and len(result) < lines:
-        take = min(width, len(compact))
+        if _text_width(compact, height) <= max_width:
+            result.append(compact)
+            compact = ""
+            break
+        take = _fitting_prefix_length(compact, max_width, height)
+        if len(result) + 1 == lines:
+            result.append(_ellipsize(compact, max_width, height))
+            compact = ""
+            break
         if take < len(compact):
             # Prefer a word boundary for Latin text without harming CJK text.
             space = compact.rfind(" ", 0, take + 1)
@@ -108,8 +152,6 @@ def wrap_text(value, width=25, lines=2):
                 take = space
         result.append(compact[:take].strip())
         compact = compact[take:].strip()
-    if compact and result:
-        result[-1] = result[-1][:-1] + "…" if result[-1] else "…"
     return result
 
 
@@ -273,7 +315,7 @@ COLORS = {
     "surface_high": _bgr("#172A45"),
     "text": _bgr("#F4F7FB"),
     "muted": _bgr("#91A1B8"),
-    "faint": _bgr("#53657D"),
+    "faint": _bgr("#71839A"),
     "blue": _bgr("#4CC9F0"),
     "cyan": _bgr("#67E8F9"),
     "green": _bgr("#52E0A4"),
@@ -359,49 +401,57 @@ def compose(state, now, pressed=False, localizer=None):
     screen[:] = COLORS["bg"]
     cv2.rectangle(screen, (0, 0), (639, 68), COLORS["header"], -1)
     rounded_rect(screen, (12, 12), (56, 56), 12, COLORS["surface_high"])
-    draw_text(screen, "×", (25, 13), COLORS["text"], 28)
-    app_name = tr("app_name")
-    draw_text(screen, app_name, (74, 13), COLORS["text"], 27)
-    subtitle_x = 74 + _text_width(app_name, 27) + 18
-    draw_text(screen, tr("app_subtitle"), (subtitle_x, 22), COLORS["faint"], 15)
+    draw_text(screen, "×", (24, 12), COLORS["text"], 30)
 
     status_color = PHASE_COLORS.get(state.phase, COLORS["blue"])
     status_text = tr(STATUS_LABELS.get(state.phase, "status_running"))
-    badge_width = _text_width(status_text, 14) + 38
+    status_height = fitted_text_height(status_text, 16, 170, 14)
+    badge_width = min(186, _text_width(status_text, status_height) + 42)
     badge_left = 622 - badge_width
-    rounded_rect(screen, (badge_left, 18), (622, 50), 16, COLORS["surface"])
-    cv2.circle(screen, (badge_left + 16, 34), 4, status_color, -1, cv2.LINE_AA)
-    draw_text(screen, status_text, (badge_left + 27, 23), COLORS["muted"], 14)
+    rounded_rect(screen, (badge_left, 16), (622, 52), 18, COLORS["surface"])
+    cv2.circle(screen, (badge_left + 17, 34), 5, status_color, -1, cv2.LINE_AA)
+    draw_text(screen, status_text, (badge_left + 29, 21), COLORS["muted"], status_height)
+
+    app_name = tr("app_name")
+    app_name_height = 28
+    draw_text(screen, app_name, (74, 12), COLORS["text"], app_name_height)
+    subtitle_x = 74 + _text_width(app_name, app_name_height) + 16
+    subtitle = tr("app_subtitle")
+    subtitle_width = max(0, badge_left - subtitle_x - 14)
+    if subtitle_width >= 72:
+        subtitle_height = fitted_text_height(subtitle, 17, subtitle_width, 14)
+        draw_text(screen, subtitle, (subtitle_x, 21), COLORS["faint"], subtitle_height)
 
     _draw_orb(screen, state, now)
     color = PHASE_COLORS.get(state.phase, COLORS["blue"])
-    draw_centered(screen, state.title, 249, COLORS["text"], 25)
-    draw_centered(screen, state.detail, 285, COLORS["muted"], 17)
+    draw_centered_fitted(screen, state.title, 247, COLORS["text"], 29, 584, 23)
+    draw_centered_fitted(screen, state.detail, 285, COLORS["muted"], 20, 584, 16)
 
     if state.phase == "activating":
-        rounded_rect(screen, (160, 322), (480, 372), 14, COLORS["surface"])
+        rounded_rect(screen, (152, 316), (488, 378), 15, COLORS["surface"])
         spaced = "  ".join(state.activation_code or "------")
-        draw_centered(screen, spaced, 332, COLORS["purple"], 27)
+        draw_centered_fitted(screen, spaced, 330, COLORS["purple"], 30, 304, 24)
     elif state.answer or state.transcript:
         message = state.answer if state.phase == "speaking" and state.answer else state.transcript
-        rounded_rect(screen, (52, 316), (588, 374), 14, COLORS["surface"])
-        for index, line in enumerate(wrap_text(message, 29, 2)):
-            draw_centered(screen, line, 326 + index * 24, COLORS["text"], 17)
+        rounded_rect(screen, (42, 312), (598, 378), 15, COLORS["surface"])
+        for index, line in enumerate(wrap_text(message, 508, 20, 2)):
+            draw_centered(screen, line, 323 + index * 27, COLORS["text"], 20)
 
     disabled = not primary_action_enabled(state.phase)
     button_color = COLORS["surface_high"] if disabled else color
     if pressed and not disabled:
         button_color = mix_color(button_color, COLORS["text"], 0.18)
-    rounded_rect(screen, (132, 389), (508, 449), 18, button_color)
+    rounded_rect(screen, (122, 386), (518, 450), 19, button_color)
     label = button_label(state.phase, localizer)
     label_color = COLORS["muted"] if disabled else COLORS["bg"]
-    group_width = _text_width(label, 21) + (42 if not disabled else 0)
+    label_height = fitted_text_height(label, 24, 328, 20)
+    group_width = _text_width(label, label_height) + (44 if not disabled else 0)
     label_left = (SCREEN_W - group_width) // 2
     if not disabled:
-        _draw_microphone(screen, (label_left + 14, 414), label_color)
-        label_left += 42
-    draw_text(screen, label, (label_left, 405), label_color, 21)
-    draw_centered(screen, tr("hardware_hint"), 458, COLORS["faint"], 12)
+        _draw_microphone(screen, (label_left + 14, 413), label_color)
+        label_left += 44
+    draw_text(screen, label, (label_left, 401), label_color, label_height)
+    draw_centered_fitted(screen, tr("hardware_hint"), 458, COLORS["faint"], 14, 600, 12)
     return screen
 
 
