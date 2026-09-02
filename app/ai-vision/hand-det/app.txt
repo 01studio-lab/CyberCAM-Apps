@@ -2,4 +2,4 @@
 
 name_cn="手掌检测" #中文名称
 name_en="Hand Det" #English Name
-index=12 #排列顺序
+index=14 #排列顺序

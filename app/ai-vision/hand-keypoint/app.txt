@@ -2,4 +2,4 @@
 
 name_cn="手掌关键点检测" #中文名称
 name_en="Hand KeyPoint" #English Name
-index=13 #排列顺序
+index=15 #排列顺序

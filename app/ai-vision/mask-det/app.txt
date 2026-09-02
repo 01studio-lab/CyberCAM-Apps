@@ -2,4 +2,4 @@
 
 name_cn="口罩识别" #中文名称
 name_en="Mask Det" #English Name
-index=15 #排列顺序
+index=18 #排列顺序

@@ -2,4 +2,4 @@
 
 name_cn="车牌识别" #中文名称
 name_en="License Recg" #English Name
-index=15 #排列顺序
+index=17 #排列顺序
