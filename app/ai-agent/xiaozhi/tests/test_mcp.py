@@ -96,6 +96,18 @@ class MCPServerTests(unittest.TestCase):
         self.assertNotIn("self.get_system_info", names)
         self.assertTrue(all("handler" not in tool for tool in response["result"]["tools"]))
 
+    def test_tool_descriptions_follow_locale(self):
+        server = MCPServer(self.devices, locale="en-US")
+        try:
+            tools = server.handle(request("tools/list", {}))["result"]["tools"]
+            camera = next(tool for tool in tools if tool["name"] == "self.camera.take_photo")
+            self.assertEqual(
+                camera["description"],
+                "Take a photo and answer a question about it",
+            )
+        finally:
+            server.close()
+
     def test_user_tool_list_can_be_requested(self):
         response = self.server.handle(request("tools/list", {"withUserTools": True}))
         names = [tool["name"] for tool in response["result"]["tools"]]

@@ -124,6 +124,21 @@ class WakeWordTests(unittest.TestCase):
             self.assertIn("--keywords-score=3.5", command)
             self.assertEqual(engine.daemon_command()[-3:], ["3.5", "0.1", "1.8"])
 
+    def test_english_locale_selects_english_keyword_and_display_phrase(self):
+        with tempfile.TemporaryDirectory() as app_dir:
+            detected = []
+            engine = WakeWordEngine(
+                app_dir,
+                {},
+                lambda: None,
+                detected.append,
+                lambda _: None,
+                locale="en-US",
+            )
+            self.assertTrue(engine._required_paths()[-1].endswith("keywords.en-US.txt"))
+            self.assertEqual(engine._localized_keyword("HELLO_XIAOZHI"), "Hello Xiaozhi")
+            self.assertIn("--modeling-unit=cjkchar", engine.command())
+
     def test_explicit_zero_score_and_threshold_are_preserved(self):
         with tempfile.TemporaryDirectory() as app_dir:
             engine = WakeWordEngine(

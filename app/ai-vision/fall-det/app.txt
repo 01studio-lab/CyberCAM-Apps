@@ -2,4 +2,4 @@
 
 name_cn="跌倒检测" #中文名称
 name_en="Fall Det" #English Name
-index=11 #排列顺序
+index=13 #排列顺序

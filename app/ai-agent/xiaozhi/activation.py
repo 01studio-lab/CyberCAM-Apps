@@ -12,6 +12,8 @@ import urllib.error
 import urllib.request
 import uuid
 
+from i18n import Localizer, normalize_locale
+
 
 APP_VERSION = "2.0.8"
 DEFAULT_OTA_URL = "https://api.tenclass.net/xiaozhi/ota/"
@@ -72,19 +74,20 @@ def local_ip():
         sock.close()
 
 
-def ensure_identity(path):
+def ensure_identity(path, localizer=None):
+    tr = (localizer or Localizer()).text
     if os.path.exists(path):
         try:
             with open(path, "r", encoding="utf-8") as handle:
                 identity = json.load(handle)
         except (OSError, ValueError) as exc:
-            raise RuntimeError("设备身份文件损坏，请从备份恢复 device.json") from exc
+            raise RuntimeError(tr("identity_corrupt")) from exc
         if not isinstance(identity, dict):
-            raise RuntimeError("设备身份文件必须是 JSON 对象")
+            raise RuntimeError(tr("identity_not_object"))
         try:
             os.chmod(path, 0o600)
         except OSError as exc:
-            raise RuntimeError("无法保护设备身份文件权限") from exc
+            raise RuntimeError(tr("identity_permissions")) from exc
     else:
         identity = {}
     mac = primary_mac()
@@ -100,14 +103,15 @@ def ensure_identity(path):
     return identity
 
 
-def activation_version(identity):
+def activation_version(identity, localizer=None):
+    tr = (localizer or Localizer()).text
     version = str(identity.get("activation_version") or "1")
     if version not in ("1", "2"):
-        raise RuntimeError("不支持的激活协议版本: %s" % version)
+        raise RuntimeError(tr("activation_version_unsupported", version=version))
     if version == "2" and not (
         identity.get("serial_number") and identity.get("hmac_key")
     ):
-        raise RuntimeError("激活 v2 需要预置 serial_number 和 hmac_key")
+        raise RuntimeError(tr("activation_v2_credentials"))
     return version
 
 
@@ -121,14 +125,15 @@ def _hmac_key_bytes(value):
     return value.encode("utf-8")
 
 
-def build_ota_request(identity):
-    version = activation_version(identity)
+def build_ota_request(identity, locale="zh-CN", localizer=None):
+    localizer = localizer or Localizer(locale)
+    version = activation_version(identity, localizer)
     headers = {
         "Device-Id": identity["device_id"],
         "Client-Id": identity["client_id"],
         "Content-Type": "application/json",
         "User-Agent": "cybercam-k230/xiaozhi-%s" % APP_VERSION,
-        "Accept-Language": "zh-CN",
+        "Accept-Language": normalize_locale(locale),
         "Activation-Version": version,
     }
     if version == "2":
@@ -154,7 +159,8 @@ def _ssl_context(verify_tls):
     return ssl._create_unverified_context()
 
 
-def post_json(url, headers, payload, timeout=10, verify_tls=True):
+def post_json(url, headers, payload, timeout=10, verify_tls=True, localizer=None):
+    tr = (localizer or Localizer()).text
     request = urllib.request.Request(
         url,
         data=json.dumps(payload, separators=(",", ":")).encode("utf-8"),
@@ -167,7 +173,7 @@ def post_json(url, headers, payload, timeout=10, verify_tls=True):
         ) as response:
             body = response.read(MAX_JSON_RESPONSE + 1)
             if len(body) > MAX_JSON_RESPONSE:
-                raise RuntimeError("OTA 服务响应过大")
+                raise RuntimeError(tr("ota_response_too_large"))
             return response.status, json.loads(body.decode("utf-8")) if body else {}
     except urllib.error.HTTPError as exc:
         body = exc.read(MAX_JSON_RESPONSE + 1)
@@ -181,17 +187,25 @@ def post_json(url, headers, payload, timeout=10, verify_tls=True):
 
 
 class OTAClient:
-    def __init__(self, ota_url=DEFAULT_OTA_URL, verify_tls=True):
+    def __init__(self, ota_url=DEFAULT_OTA_URL, verify_tls=True, locale="zh-CN"):
         self.ota_url = ota_url.rstrip("/") + "/"
         self.verify_tls = verify_tls
+        self.locale = normalize_locale(locale)
+        self.localizer = Localizer(self.locale)
 
     def fetch(self, identity):
-        headers, payload = build_ota_request(identity)
+        headers, payload = build_ota_request(
+            identity, self.locale, self.localizer
+        )
         status, data = post_json(
-            self.ota_url, headers, payload, verify_tls=self.verify_tls
+            self.ota_url,
+            headers,
+            payload,
+            verify_tls=self.verify_tls,
+            localizer=self.localizer,
         )
         if status != 200:
-            raise RuntimeError("OTA 服务返回 HTTP %d" % status)
+            raise RuntimeError(self.localizer.text("ota_http_error", status=status))
         websocket = data.get("websocket") or {}
         return {
             "websocket_url": websocket.get("url") or "",
@@ -204,8 +218,8 @@ class OTAClient:
         challenge = str((activation or {}).get("challenge") or "")
         code = str((activation or {}).get("code") or "")
         if not challenge or not code:
-            raise RuntimeError("激活响应缺少 challenge/code")
-        version = activation_version(identity)
+            raise RuntimeError(self.localizer.text("activation_challenge_missing"))
+        version = activation_version(identity, self.localizer)
         payload = {}
         if version == "2":
             signature = hmac.new(
@@ -238,11 +252,14 @@ class OTAClient:
                 headers,
                 payload,
                 verify_tls=self.verify_tls,
+                localizer=self.localizer,
             )
             if status == 200:
                 return True
             if status != 202:
-                raise RuntimeError("激活服务返回 HTTP %d" % status)
+                raise RuntimeError(
+                    self.localizer.text("activation_http_error", status=status)
+                )
             if stop_event is not None:
                 stop_event.wait(3.0)
             else:
